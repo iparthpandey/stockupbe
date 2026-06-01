@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, status, Depends
 from sqlmodel import Session, select
-from app import models, database, schemas
+from . import models, database, schemas
 
 app = FastAPI(title="Inventory & Order Management - Backend")
 
@@ -18,6 +18,7 @@ def get_session():
 ### Products
 @app.post("/products", response_model=schemas.ProductRead, status_code=status.HTTP_201_CREATED)
 def create_product(payload: schemas.ProductCreate, session: Session = Depends(get_session)):
+    # uniqueness check SKU
     existing = session.exec(select(models.Product).where(models.Product.sku == payload.sku)).first()
     if existing:
         raise HTTPException(status_code=400, detail="SKU must be unique")
@@ -113,9 +114,12 @@ def delete_customer(customer_id: int, session: Session = Depends(get_session)):
 ### Orders
 @app.post("/orders", response_model=schemas.OrderRead, status_code=status.HTTP_201_CREATED)
 def create_order(payload: schemas.OrderCreate, session: Session = Depends(get_session)):
+    # check customer exists
     customer = session.get(models.Customer, payload.customer_id)
     if not customer:
         raise HTTPException(status_code=400, detail="Customer does not exist")
+
+    # prepare items, check stock
     items = []
     total = 0.0
     for it in payload.items:
@@ -130,15 +134,20 @@ def create_order(payload: schemas.OrderCreate, session: Session = Depends(get_se
         subtotal = unit_price * it.quantity
         total += subtotal
         items.append((product, it.quantity, unit_price, subtotal))
+
+    # create order
     order = models.Order(customer_id=payload.customer_id, total_amount=round(total, 2))
     session.add(order)
     session.commit()
     session.refresh(order)
+
+    # create items and reduce stock
     for product, qty, unit_price, subtotal in items:
         order_item = models.OrderItem(order_id=order.id, product_id=product.id, quantity=qty, unit_price=unit_price, subtotal=subtotal)
         session.add(order_item)
         product.quantity = product.quantity - qty
         session.add(product)
+
     session.commit()
     session.refresh(order)
     return schemas.OrderRead.from_orm(order)
@@ -162,11 +171,13 @@ def delete_order(order_id: int, session: Session = Depends(get_session)):
     order = session.get(models.Order, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    # restore stock
     for item in order.items:
         product = session.get(models.Product, item.product_id)
         if product:
             product.quantity += item.quantity
             session.add(product)
+    # delete items and order
     for item in order.items:
         session.delete(item)
     session.delete(order)

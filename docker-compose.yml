@@ -1,0 +1,42 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    networks:
+      - app-network
+
+  # Frontend service (placeholder) - you will add the frontend Dockerfile later
+  frontend:
+    image: node:18-alpine
+    working_dir: /app
+    command: sh -c "echo 'Add frontend service or deploy separately' && tail -f /dev/null"
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+
+networks:
+  app-network:
+    driver: bridge

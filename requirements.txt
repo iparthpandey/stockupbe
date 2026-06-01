@@ -1,4 +1,6 @@
 fastapi>=0.95.0
 uvicorn[standard]>=0.22.0
+sqlmodel>=0.0.8
+psycopg2-binary>=2.9.6
 
 # Optional: if you plan to use Pydantic v1 compatibility or specific features, add pinned versions.
